@@ -1,0 +1,11 @@
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\bin\Debug\net9.0\Volun.Core.deps.json
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\bin\Debug\net9.0\Volun.Core.dll
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\bin\Debug\net9.0\Volun.Core.pdb
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.AssemblyInfoInputs.cache
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.AssemblyInfo.cs
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.csproj.CoreCompileInputs.cache
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.dll
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\refint\Volun.Core.dll
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\Volun.Core.pdb
+C:\Users\rodrigo.sanandres\DevRodimux\voluntariado\src\Volun.Core\obj\Debug\net9.0\ref\Volun.Core.dll

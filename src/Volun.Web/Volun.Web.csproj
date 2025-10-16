@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.10" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="QuestPDF" Version="2025.7.3" />
+    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Volun.Core\Volun.Core.csproj" />
+    <ProjectReference Include="..\Volun.Infrastructure\Volun.Infrastructure.csproj" />
+    <ProjectReference Include="..\Volun.Notifications\Volun.Notifications.csproj" />
+  </ItemGroup>
+
+</Project>

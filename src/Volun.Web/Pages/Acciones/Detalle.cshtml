@@ -1,0 +1,37 @@
+@page "{id:guid}"
+@model Volun.Web.Pages.Acciones.DetalleModel
+
+@if (Model.Accion is null)
+{
+    <div class="alert alert-warning">Acción no encontrada.</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title">@Model.Accion.Titulo</h2>
+            <p class="card-text">@Model.Accion.Descripcion</p>
+            <p><strong>Organizador:</strong> @Model.Accion.Organizador</p>
+            <p><strong>Ubicación:</strong> @Model.Accion.Ubicacion</p>
+            <p><strong>Fechas:</strong> @Model.Accion.FechaInicio:g - @Model.Accion.FechaFin:g</p>
+            <p><strong>Cupo:</strong> @(Model.Accion.CupoMaximo == 0 ? "Ilimitado" : Model.Accion.CupoMaximo)</p>
+        </div>
+    </div>
+
+    <h3 class="mt-4">Turnos disponibles</h3>
+    @if (!Model.Accion.Turnos.Any())
+    {
+        <p>No hay turnos definidos.</p>
+    }
+    else
+    {
+        <ul class="list-group">
+            @foreach (var turno in Model.Accion.Turnos)
+            {
+                <li class="list-group-item">
+                    <strong>@turno.Titulo</strong> (@turno.FechaInicio:g - @turno.FechaFin:g) - Cupo: @turno.Cupo
+                </li>
+            }
+        </ul>
+    }
+}

@@ -1,0 +1,28 @@
+@page
+@model Volun.Web.Pages.Acciones.IndexModel
+
+<h1 class="mb-4">Catálogo de Acciones</h1>
+
+@if (!Model.Acciones.Any())
+{
+    <div class="alert alert-info">Aún no hay acciones publicadas.</div>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-md-2 g-4">
+        @foreach (var accion in Model.Acciones)
+        {
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">@accion.Titulo</h5>
+                        <p class="card-text">@accion.Descripcion</p>
+                        <p class="card-text"><strong>Ubicación:</strong> @accion.Ubicacion</p>
+                        <p class="card-text"><strong>Fecha:</strong> @accion.FechaInicio:d - @accion.FechaFin:d</p>
+                        <a class="btn btn-outline-primary" asp-page="Detalle" asp-route-id="@accion.Id">Ver detalle</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

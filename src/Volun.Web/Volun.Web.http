@@ -1,0 +1,6 @@
+@Volun.Web_HostAddress = http://localhost:5066
+
+GET {{Volun.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

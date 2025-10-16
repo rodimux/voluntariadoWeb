@@ -1,0 +1,101 @@
+# prompt_gestor_voluntarios.prompt
+You are an expert senior .NET engineer and solution architect.
+Goal: Generate a production‑ready, layered ASP.NET Core (.NET 8) solution for a Volunteer & Actions Management platform based **strictly** on the functional spec at `docs/funcional_gestor_voluntarios.md`.
+
+## Output requirements
+- Create a Visual Studio / dotnet CLI solution with projects:
+  - `Volun.Core` (domain entities, value objects, enums, interfaces)
+  - `Volun.Infrastructure` (EF Core DbContext, configurations, migrations, repositories)
+  - `Volun.Web` (ASP.NET Core backend: Minimal APIs or MVC + Razor; Authentication/Authorization)
+  - `Volun.Notifications` (SMTP/email service + templates placeholder)
+  - `Volun.Tests` (xUnit + basic integration tests)
+- Add solution folder structure: `src/` for projects, `tests/` for tests.
+- Add proper project references and `Directory.Build.props` for common settings.
+- Scaffold EF Core models and configurations from the spec (see §4 Modelo de dominio).
+- Implement DTOs + mapping for public API. Use `ProblemDetails` for errors.
+- Implement endpoints (see §7 API) with validation and role-based authorization (Admin, Coordinador, Voluntario, Invitado).
+- Implement basic email service (interface + stub) and notification templates.
+- Add seed data for roles and minimal catalogs.
+- Add logging with Serilog and appsettings examples.
+- Add Swagger/OpenAPI with security scheme.
+- Add i18n scaffolding (ES/EN) with resource placeholders.
+- Add sample UI pages (Razor/MVC) for: Catálogo de Acciones, Detalle Acción con Inscripción, Panel Coordinador (lista acciones, inscripciones), Perfil Voluntario.
+- Provide `README.md` with local run instructions and commands.
+
+## Domain model (from spec reference, do not invent)
+Entities: Voluntario, Accion, Turno, Inscripcion, Asistencia, Certificado, UsuarioSistema (if separate), Auditoria.  
+Respect attributes and relationships as defined in the spec. Include enums: EstadoInscripcion, EstadoAccion, MetodoAsistencia, Visibilidad.
+
+## Security
+- ASP.NET Core Identity (or cookie/JWT) with role-based policies: Admin, Coordinador, Voluntario, Invitado.
+- Minimal seed for an Admin and a Coordinador user.
+- Add authorization handlers to restrict Coordinador to owned Acciones.
+
+## Data
+- SQL Server default; connection string from `appsettings.Development.json`.
+- Migrations in `Volun.Infrastructure`. CLI examples in README.
+- Indices and constraints per spec (unique email, etc.).
+- Soft delete or status where applicable.
+
+## API Endpoints (implement V1)
+- Voluntarios: list/create/get/update/delete (soft/anon).
+- Acciones (+Turnos): list/create/get/update; create/list turnos.
+- Inscripciones: create, change state (Aprobar/ListaEspera/Cancelar/Completada/NoShow).
+- Asistencias: checkin/checkout (by InscripcionId or QR token param).
+- Certificados: GET public verification by `CodigoVerificacion`.
+- Reportes: dashboard basic.
+- Export: CSV/XLSX for Voluntarios/Inscripciones/Asistencias.
+Return 409 when cupos exceeded; 422 for validation; 403 for permission issues.
+
+## QR & Certificates
+- Create service that generates a per‑inscription QR payload (GUID or signed token).
+- Compute hours as (checkout - checkin) in decimal (2 places). Generate PDF certificate (stub service + interface + TODOs).
+
+## Quality & Testing
+- Add unit tests for domain rules (cupos, estados de inscripción).
+- Add minimal integration tests for a critical endpoint (e.g., POST /inscripciones).
+
+## Tooling & Packages
+- EF Core SQL Server, Serilog.AspNetCore, FluentValidation, ClosedXML (export), QRCoder, QuestPDF (or stub), Swashbuckle.AspNetCore.
+- Use nullable reference types and analyzers enabled (treat warnings as errors in CI, optional).
+
+## Commands to emit (as code blocks in the response)
+1) Create folders and solution:
+   - `mkdir -p src tests`
+   - `dotnet new sln -n Volun`
+2) Create projects:
+   - `dotnet new classlib -n Volun.Core -o src/Volun.Core`
+   - `dotnet new classlib -n Volun.Infrastructure -o src/Volun.Infrastructure`
+   - `dotnet new webapi -n Volun.Web -o src/Volun.Web`
+   - `dotnet new classlib -n Volun.Notifications -o src/Volun.Notifications`
+   - `dotnet new xunit -n Volun.Tests -o tests/Volun.Tests`
+3) Add references:
+   - `dotnet sln Volun.sln add src/**/**/*.csproj tests/**/**/*.csproj`
+   - `dotnet add src/Volun.Infrastructure reference src/Volun.Core`
+   - `dotnet add src/Volun.Web reference src/Volun.Core src/Volun.Infrastructure src/Volun.Notifications`
+   - `dotnet add tests/Volun.Tests reference src/Volun.Web`
+4) Add packages (examples):
+   - `dotnet add src/Volun.Infrastructure package Microsoft.EntityFrameworkCore.SqlServer`
+   - `dotnet add src/Volun.Infrastructure package Microsoft.EntityFrameworkCore.Design`
+   - `dotnet add src/Volun.Web package Serilog.AspNetCore`
+   - `dotnet add src/Volun.Web package Swashbuckle.AspNetCore`
+   - `dotnet add src/Volun.Web package FluentValidation.AspNetCore`
+   - `dotnet add src/Volun.Notifications package MailKit`
+   - `dotnet add src/Volun.Web package QRCoder`
+   - `dotnet add src/Volun.Web package QuestPDF`
+   - `dotnet add tests/Volun.Tests package Microsoft.AspNetCore.Mvc.Testing`
+5) EF Core:
+   - `dotnet ef migrations add InitialCreate -p src/Volun.Infrastructure -s src/Volun.Web`
+   - `dotnet ef database update -p src/Volun.Infrastructure -s src/Volun.Web`
+
+## Working mode
+- Read the functional spec from `docs/funcional_gestor_voluntarios.md` and keep it as the single source of truth.
+- Ask for clarifications only if absolutely necessary; otherwise scaffold TODOs with comments.
+- Generate files with clear region markers and TODO comments where business confirmation is needed.
+- Keep responses concise and actionable.
+
+Now, generate:
+1) The list of files to create (tree).
+2) The CLI commands as above, adapted if needed.
+3) The initial code for entities, DbContext, and a sample controller (Acciones).
+4) A minimal README.md with setup steps.

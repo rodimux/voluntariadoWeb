@@ -1,0 +1,24 @@
+@inject IViewLocalizer Localizer
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <title>@Localizer["App_Title"]</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+</head>
+<body>
+    <nav class="navbar navbar-expand navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" asp-page="/Index">@Localizer["App_Title"]</a>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" asp-page="/Acciones/Index">@Localizer["Menu_Acciones"]</a></li>
+                <li class="nav-item"><a class="nav-link" asp-page="/Panel/Index">@Localizer["Menu_Panel"]</a></li>
+                <li class="nav-item"><a class="nav-link" asp-page="/Perfil/Index">@Localizer["Menu_Perfil"]</a></li>
+            </ul>
+        </div>
+    </nav>
+    <div class="container py-4">
+        @RenderBody()
+    </div>
+</body>
+</html>

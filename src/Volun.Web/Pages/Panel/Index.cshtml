@@ -1,0 +1,31 @@
+﻿@page
+@model Volun.Web.Pages.Panel.IndexModel
+
+<h1>Panel de Coordinacion</h1>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card text-bg-light">
+            <div class="card-body">
+                <h5 class="card-title">Acciones publicadas</h5>
+                <p class="display-6">@Model.AccionesActivas</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-bg-light">
+            <div class="card-body">
+                <h5 class="card-title">Voluntarios activos</h5>
+                <p class="display-6">@Model.VoluntariosActivos</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Inscripciones pendientes</h5>
+                <p class="display-6">@Model.InscripcionesPendientes</p>
+            </div>
+        </div>
+    </div>
+</div>
