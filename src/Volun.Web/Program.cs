@@ -12,10 +12,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
 using Microsoft.OpenApi.Models;
+using QuestPDF.Infrastructure;
 using Serilog;
 using System.Globalization;
 using System.Security.Claims;
 using Volun.Core.Entities;
+using Volun.Core.Enums;
 using Volun.Core.Repositories;
 using Volun.Core.Services;
 using Volun.Infrastructure.Identity;
@@ -27,8 +29,11 @@ using Volun.Web.Endpoints;
 using Volun.Web.Endpoints.Admin;
 using Volun.Web.Endpoints.Exports;
 using Volun.Web.Endpoints.Public;
+using Volun.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+QuestPDF.Settings.License = LicenseType.Community;
 
 builder.Host.UseSerilog((context, services, configuration) =>
 {
@@ -130,8 +135,8 @@ builder.Services.AddScoped<IVoluntarioRepository, VoluntarioRepository>();
 builder.Services.AddScoped<IAccionRepository, AccionRepository>();
 builder.Services.AddScoped<IInscripcionRepository, InscripcionRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-builder.Services.AddScoped<IQrCodeGenerator, StubQrCodeGenerator>();
-builder.Services.AddScoped<ICertificateService, StubCertificateService>();
+builder.Services.AddScoped<IQrCodeGenerator, QrCodeGeneratorService>();
+builder.Services.AddScoped<ICertificateService, CertificatePdfService>();
 
 var app = builder.Build();
 
@@ -184,30 +189,12 @@ app.MapRazorPages();
 app.MapAccionesEndpoints();
 app.MapVoluntariosEndpoints();
 app.MapInscripcionesEndpoints();
+app.MapCertificadosEndpoints();
 app.MapCertificadosPublicEndpoints();
 app.MapReportesEndpoints();
 app.MapExportEndpoints();
 
 app.Run();
-
-public class StubQrCodeGenerator : IQrCodeGenerator
-{
-    public byte[] GenerateQr(string payload)
-    {
-        // TODO: Implement real QR generation with QRCoder
-        return System.Text.Encoding.UTF8.GetBytes($"QR:{payload}");
-    }
-}
-
-public class StubCertificateService : ICertificateService
-{
-    public Task<byte[]> GenerateCertificatePdfAsync(Certificado certificado, CancellationToken cancellationToken = default)
-    {
-        // TODO: Implement real PDF generation with QuestPDF
-        var placeholder = $"Certificado {certificado.CodigoVerificacion} - Horas: {certificado.Horas}";
-        return Task.FromResult(System.Text.Encoding.UTF8.GetBytes(placeholder));
-    }
-}
 
 public class AllowAllAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -230,7 +217,11 @@ public class AllowAllPolicyEvaluator : IPolicyEvaluator
 {
     public Task<AuthenticateResult> AuthenticateAsync(AuthorizationPolicy policy, HttpContext context)
     {
-        var principal = new ClaimsPrincipal(new ClaimsIdentity("AllowAll"));
+        var identity = new ClaimsIdentity("AllowAll");
+        identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()));
+        identity.AddClaim(new Claim(ClaimTypes.Role, RolSistema.Admin.ToString()));
+        identity.AddClaim(new Claim(ClaimTypes.Role, RolSistema.Coordinador.ToString()));
+        var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, "AllowAll");
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }

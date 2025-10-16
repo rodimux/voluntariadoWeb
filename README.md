@@ -1,8 +1,8 @@
 # Volun – Gestor de Voluntariado
 
-Solución ASP.NET Core 8 con arquitectura en capas para gestionar voluntarios, acciones, inscripciones, asistencia y certificados según el documento funcional `docs/funcional_gestor_voluntarios.md`.
+Solucion ASP.NET Core 8 en arquitectura en capas para gestionar voluntarios, acciones, inscripciones, asistencia y certificados segun el documento funcional `docs/funcional_gestor_voluntarios.md`.
 
-## Estructura de la solución
+## Estructura de la solucion
 
 ```
 .
@@ -11,11 +11,11 @@ Solución ASP.NET Core 8 con arquitectura en capas para gestionar voluntarios, a
 │   ├── Volun.Core/                # Dominio: entidades, enums, contratos, servicios
 │   ├── Volun.Infrastructure/      # EF Core, contexto, identity, seed, repositorios
 │   ├── Volun.Notifications/       # Servicio de correo (MailKit) + plantillas
-│   └── Volun.Web/                 # API v1, Razor Pages de ejemplo, autenticación, i18n
+│   └── Volun.Web/                 # API v1, Razor Pages de ejemplo, autenticacion, i18n
 ├── tests/
 │   └── Volun.Tests/               # Pruebas unitarias e integradas (xUnit + WebApplicationFactory)
-├── Directory.Build.props          # Configuración común (nullable, analyzers)
-├── NuGet.config                   # Fuente nuget.org explícita
+├── Directory.Build.props          # Configuracion comun (nullable, analyzers)
+├── NuGet.config                   # Fuente nuget.org explicita
 └── Volun.sln
 ```
 
@@ -26,9 +26,9 @@ Solución ASP.NET Core 8 con arquitectura en capas para gestionar voluntarios, a
    dotnet restore
    dotnet build
    ```
-2. **Configurar la cadena de conexión**
+2. **Configurar la cadena de conexion**
    - Edita `src/Volun.Web/appsettings.Development.json` → `ConnectionStrings:DefaultConnection`.
-3. **Ejecutar la migración inicial**
+3. **Ejecutar la migracion inicial**
    ```bash
    dotnet ef migrations add InitialCreate -p src/Volun.Infrastructure -s src/Volun.Web
    dotnet ef database update -p src/Volun.Infrastructure -s src/Volun.Web
@@ -37,35 +37,43 @@ Solución ASP.NET Core 8 con arquitectura en capas para gestionar voluntarios, a
    ```bash
    dotnet run --project src/Volun.Web
    ```
-   - Swagger/JSON: `https://localhost:5001/swagger`
+   - Swagger: `https://localhost:5001/swagger`
    - Razor Pages de ejemplo: `/Acciones`, `/Panel`, `/Perfil`
 5. **Ejecutar pruebas**
    ```bash
    dotnet test
    ```
 
-> La inicialización crea usuarios semilla:  
+> La inicializacion crea usuarios semilla:  
 > - Admin → `admin@volun.local` / `ChangeThis!123`  
 > - Coordinador → `coordinador@volun.local` / `ChangeThis!123`
 
-## Endpoints y características clave
+## Endpoints y capacidades destacadas
 
-- API REST `api/v1/...` con Minimal APIs, `ProblemDetails`, validaciones FluentValidation y políticas por rol.
-- Módulos disponibles V1:
-  - `Acciones` + `Turnos`: CRUD básico, publicación, gestión de cupos.
-  - `Voluntarios`: alta pública, actualización, soft delete (suspensión).
-  - `Inscripciones`: creación con control de cupo/lista de espera, cambio de estado, check-in/out.
-  - `Certificados` públicos: verificación por código.
-  - `Reportes` y `Export` iniciales (CSV voluntarios).
-- Integración con Identity + roles (Admin, Coordinador, Voluntario, Invitado).
-- Localización ES/EN (`Localization/Shared.*.resx`).
+- API REST `api/v1/...` con Minimal APIs, `ProblemDetails`, validaciones FluentValidation e identidad basada en roles.
+- Acciones y turnos: CRUD, publicacion, control de cupos, restriccion por coordinador propietario.
+- Voluntarios: alta publica, edicion, suspension (soft delete) y exportacion CSV filtrada por coordinador.
+- Inscripciones: creacion con lista de espera, cambio de estado, check-in/out con control de coordinador y endpoint de QR (`GET /api/v1/inscripciones/{id}/qr`).
+- Certificados:
+  - Administracion privada (`POST /api/v1/certificados`) con control de roles.
+  - Descarga de PDF generado con QuestPDF (`GET /api/v1/certificados/{id}/pdf`).
+  - Verificacion publica por codigo (`GET /api/v1/public/certificados/{codigo}`).
+- Reportes: dashboard enriquecido (voluntarios activos, acciones por mes, top categorias, inscripciones por estado) respetando el alcance de cada coordinador.
+- Exportaciones CSV: voluntarios, inscripciones y asistencias, filtradas automaticamente por acciones propias del coordinador.
+- Integracion con QRCoder y QuestPDF para generar QR (PNG) y certificados PDF listos para descarga.
+
+## Servicios y configuraciones clave
+
+- Identity + roles (Admin, Coordinador, Voluntario, Invitado). Coordinadores solo operan sobre acciones e inscripciones propias.
+- Localizacion ES/EN (`Localization/Shared.*.resx`).
 - Servicio de correo (`EmailNotificationService`) configurable por `Notifications:Smtp`.
-- Generadores stub para QR y PDF (inyectados vía DI con TODO explícito).
+- QR y PDF reales registrados via DI (`IQrCodeGenerator`, `ICertificateService`).
+- Licencia QuestPDF configurada para modo Community (`QuestPDF.Settings.License`).
 
-## Próximos pasos sugeridos
+## Siguientes pasos recomendados
 
-- Completar endpoints restantes (dashboard avanzado, exportaciones XLSX, certificados PDF reales).
-- Sustituir stubs de QR/QuestPDF por implementaciones reales.
-- Añadir autorizadores finos (coordinador sólo acciones propias) y pruebas adicionales.
-- Implementar notificaciones con plantillas reales y orquestación de correos.
+- Permitir a los voluntarios descargar su propio QR desde un endpoint autenticado.
+- Completar flujos de emision de certificados (notificaciones, versionado) y trazas de auditoria.
+- Incorporar exportaciones XLSX y plantillas dinamicas de correo.
+- Aumentar cobertura de pruebas (especialmente para certificados y reportes).
 

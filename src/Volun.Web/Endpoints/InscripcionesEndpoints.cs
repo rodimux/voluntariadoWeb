@@ -3,12 +3,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
+using System.Security.Claims;
 using Volun.Core.Entities;
 using Volun.Core.Enums;
 using Volun.Core.Repositories;
+using Volun.Core.Services;
 using Volun.Infrastructure.Persistence;
 using Volun.Web.Dtos;
 using Volun.Web.Mappings;
+using Volun.Web.Security;
 
 namespace Volun.Web.Endpoints;
 
@@ -68,6 +71,7 @@ public static class InscripcionesEndpoints
         .RequireAuthorization();
 
         group.MapPatch("/{id:guid}/estado", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             UpdateEstadoInscripcionRequest request,
             IValidator<UpdateEstadoInscripcionRequest> validator,
@@ -85,6 +89,17 @@ public static class InscripcionesEndpoints
             if (inscripcion is null)
             {
                 return Results.NotFound();
+            }
+
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                var coordinadorId = inscripcion.Accion?.CoordinadorId;
+                if (currentUserId is null || coordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
             }
 
             try
@@ -109,6 +124,7 @@ public static class InscripcionesEndpoints
         .RequireAuthorization(PolicyAdminOrCoordinador);
 
         group.MapPost("/{id:guid}/checkin", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             CheckInRequest request,
             IValidator<CheckInRequest> validator,
@@ -134,6 +150,17 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                var coordinadorId = inscripcion.Accion?.CoordinadorId;
+                if (currentUserId is null || coordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
+            }
+
             var asistencia = Asistencia.Create(id, DateTimeOffset.UtcNow, request.Metodo, request.Comentarios);
             dbContext.Asistencias.Add(asistencia);
             await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -143,9 +170,11 @@ public static class InscripcionesEndpoints
         .RequireAuthorization(PolicyAdminOrCoordinador);
 
         group.MapPost("/{id:guid}/checkout", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             CheckOutRequest request,
             IValidator<CheckOutRequest> validator,
+            IInscripcionRepository inscripcionRepository,
             VolunDbContext dbContext,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
@@ -171,11 +200,60 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
+            var inscripcion = await inscripcionRepository.GetByIdAsync(id, cancellationToken);
+            if (inscripcion is null)
+            {
+                return Results.NotFound();
+            }
+
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                var coordinadorId = inscripcion.Accion?.CoordinadorId;
+                if (currentUserId is null || coordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
+            }
+
             asistencia.RegistrarCheckOut(request.CheckOut, request.Comentarios);
             dbContext.Asistencias.Update(asistencia);
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(asistencia.ToResponse());
+        })
+        .RequireAuthorization(PolicyAdminOrCoordinador);
+
+        group.MapGet("/{id:guid}/qr", async Task<IResult> (
+            ClaimsPrincipal user,
+            Guid id,
+            VolunDbContext dbContext,
+            IQrCodeGenerator qrCodeGenerator,
+            CancellationToken cancellationToken) =>
+        {
+            var inscripcion = await dbContext.Inscripciones
+                .Include(i => i.Accion)
+                .FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
+
+            if (inscripcion is null)
+            {
+                return Results.NotFound();
+            }
+
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                if (!user.IsCoordinador() || currentUserId is null || inscripcion.Accion?.CoordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
+            }
+
+            var qrBytes = qrCodeGenerator.GenerateQr(inscripcion.QrToken);
+            var fileName = $"inscripcion-{inscripcion.Id}.png";
+            return Results.File(qrBytes, "image/png", fileName);
         })
         .RequireAuthorization(PolicyAdminOrCoordinador);
 

@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
+using System.Security.Claims;
 using Volun.Core.Entities;
 using Volun.Core.Enums;
 using Volun.Core.Repositories;
@@ -9,6 +10,7 @@ using Volun.Core.ValueObjects;
 using Volun.Infrastructure.Persistence;
 using Volun.Web.Dtos;
 using Volun.Web.Mappings;
+using Volun.Web.Security;
 
 namespace Volun.Web.Endpoints;
 
@@ -87,6 +89,7 @@ public static class AccionesEndpoints
         .AllowAnonymous();
 
         group.MapPost("/", async Task<IResult> (
+            ClaimsPrincipal user,
             CreateAccionRequest request,
             IValidator<CreateAccionRequest> validator,
             IAccionRepository repository,
@@ -97,6 +100,24 @@ public static class AccionesEndpoints
             if (!validation.IsValid)
             {
                 return Results.ValidationProblem(validation.ToDictionary());
+            }
+
+            var isAdmin = user.IsAdmin();
+            var isCoordinador = user.IsCoordinador();
+            if (!isAdmin && !isCoordinador)
+            {
+                return Results.Forbid();
+            }
+
+            Guid? coordinadorId = request.CoordinadorId;
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                if (currentUserId is null)
+                {
+                    return Results.Forbid();
+                }
+                coordinadorId = currentUserId;
             }
 
             var geo = request.Latitud.HasValue && request.Longitud.HasValue
@@ -115,7 +136,7 @@ public static class AccionesEndpoints
                 request.CupoMaximo,
                 request.Visibilidad,
                 request.TurnosHabilitados,
-                request.CoordinadorId,
+                coordinadorId,
                 geo,
                 request.Requisitos);
 
@@ -127,6 +148,7 @@ public static class AccionesEndpoints
         .RequireAuthorization(PolicyAdminOrCoordinador);
 
         group.MapPut("/{id:guid}", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             UpdateAccionRequest request,
             IValidator<UpdateAccionRequest> validator,
@@ -144,6 +166,16 @@ public static class AccionesEndpoints
             if (accion is null)
             {
                 return Results.NotFound();
+            }
+
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                if (currentUserId is null || accion.CoordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
             }
 
             var geo = request.Latitud.HasValue && request.Longitud.HasValue
@@ -170,6 +202,7 @@ public static class AccionesEndpoints
         .RequireAuthorization(PolicyAdminOrCoordinador);
 
         group.MapPost("/{id:guid}/publicar", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             IAccionRepository repository,
             IUnitOfWork unitOfWork,
@@ -181,6 +214,16 @@ public static class AccionesEndpoints
                 return Results.NotFound();
             }
 
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                if (currentUserId is null || accion.CoordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
+            }
+
             accion.Publicar();
             await repository.UpdateAsync(accion, cancellationToken);
             await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -190,6 +233,7 @@ public static class AccionesEndpoints
         .RequireAuthorization(PolicyAdminOrCoordinador);
 
         group.MapPost("/{id:guid}/turnos", async Task<IResult> (
+            ClaimsPrincipal user,
             Guid id,
             CreateTurnoRequest request,
             IValidator<CreateTurnoRequest> validator,
@@ -207,6 +251,16 @@ public static class AccionesEndpoints
             if (accion is null)
             {
                 return Results.NotFound();
+            }
+
+            var isAdmin = user.IsAdmin();
+            if (!isAdmin)
+            {
+                var currentUserId = user.GetUserId();
+                if (currentUserId is null || accion.CoordinadorId != currentUserId)
+                {
+                    return Results.Forbid();
+                }
             }
 
             var turno = accion.AgregarTurno(request.Titulo, request.FechaInicio, request.FechaFin, request.Cupo, request.Notas);
