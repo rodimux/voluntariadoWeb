@@ -15,6 +15,9 @@ public class InscripcionRepository(VolunDbContext context) : IInscripcionReposit
     public async Task<int> ContarPorAccionAsync(Guid accionId, EstadoInscripcion estado, CancellationToken cancellationToken = default)
         => await context.Inscripciones.CountAsync(i => i.AccionId == accionId && i.Estado == estado, cancellationToken);
 
+    public async Task<int> ContarPorTurnoAsync(Guid turnoId, EstadoInscripcion estado, CancellationToken cancellationToken = default)
+        => await context.Inscripciones.CountAsync(i => i.TurnoId == turnoId && i.Estado == estado, cancellationToken);
+
     public async Task<Inscripcion?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => await context.Inscripciones
             .Include(i => i.Accion)

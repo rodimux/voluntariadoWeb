@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
@@ -17,7 +19,7 @@ namespace Volun.Web.Endpoints;
 
 public static class InscripcionesEndpoints
 {
-    private const string PolicyAdminOrCoordinador = "RequireAdminOrCoordinador";
+    private static readonly CoordinadorOwnsAccionRequirement OwnsAccionRequirement = new();
 
     public static IEndpointRouteBuilder MapInscripcionesEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -26,10 +28,13 @@ public static class InscripcionesEndpoints
             .RequireAuthorization();
 
         group.MapPost("/", async Task<IResult> (
+            ClaimsPrincipal user,
             CreateInscripcionRequest request,
             IValidator<CreateInscripcionRequest> validator,
             IInscripcionRepository inscripcionRepository,
             IAccionRepository accionRepository,
+            IVoluntarioRepository voluntarioRepository,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -45,6 +50,47 @@ public static class InscripcionesEndpoints
                 return Results.NotFound(new ProblemDetails { Title = "Acción no encontrada" });
             }
 
+            var voluntario = await voluntarioRepository.GetByIdAsync(request.VoluntarioId, cancellationToken);
+            if (voluntario is null)
+            {
+                return Results.NotFound(new ProblemDetails { Title = "Voluntario no encontrado" });
+            }
+
+            if (accion.TurnosHabilitados && request.TurnoId is null)
+            {
+                return Results.UnprocessableEntity(new ProblemDetails
+                {
+                    Title = "El turno es obligatorio",
+                    Detail = "La acción requiere selección de turno.",
+                    Status = StatusCodes.Status422UnprocessableEntity
+                });
+            }
+
+            if (!accion.TurnosHabilitados && request.TurnoId is not null)
+            {
+                return Results.UnprocessableEntity(new ProblemDetails
+                {
+                    Title = "Turno no permitido",
+                    Detail = "La acción no admite turnos, no se debe especificar TurnoId.",
+                    Status = StatusCodes.Status422UnprocessableEntity
+                });
+            }
+
+            Turno? turnoSeleccionado = null;
+            if (request.TurnoId is not null)
+            {
+                turnoSeleccionado = accion.Turnos.FirstOrDefault(t => t.Id == request.TurnoId.Value);
+                if (turnoSeleccionado is null)
+                {
+                    return Results.UnprocessableEntity(new ProblemDetails
+                    {
+                        Title = "Turno inválido",
+                        Detail = "El turno indicado no pertenece a la acción especificada.",
+                        Status = StatusCodes.Status422UnprocessableEntity
+                    });
+                }
+            }
+
             var existente = await inscripcionRepository.GetByVoluntarioAsync(request.VoluntarioId, request.AccionId, cancellationToken);
             if (existente is not null)
             {
@@ -53,21 +99,67 @@ public static class InscripcionesEndpoints
 
             var inscripcion = Inscripcion.Create(request.VoluntarioId, request.AccionId, request.TurnoId, request.Notas);
 
-            var aprobadas = await inscripcionRepository.ContarPorAccionAsync(request.AccionId, EstadoInscripcion.Aprobada, cancellationToken);
-            if (!accion.TieneCupoDisponible(aprobadas))
-            {
-                inscripcion.CambiarEstado(EstadoInscripcion.ListaEspera, "Cupo completo");
-                await inscripcionRepository.AddAsync(inscripcion, cancellationToken);
-                await unitOfWork.SaveChangesAsync(cancellationToken);
+            var aprobadasAccion = await inscripcionRepository.ContarPorAccionAsync(request.AccionId, EstadoInscripcion.Aprobada, cancellationToken);
+            var sinCupoAccion = !accion.TieneCupoDisponible(aprobadasAccion);
 
-                return Results.Conflict(inscripcion.ToResponse());
+            bool sinCupoTurno = false;
+            if (turnoSeleccionado is not null && turnoSeleccionado.Cupo > 0)
+            {
+                var aprobadasTurno = await inscripcionRepository.ContarPorTurnoAsync(turnoSeleccionado.Id, EstadoInscripcion.Aprobada, cancellationToken);
+                sinCupoTurno = aprobadasTurno >= turnoSeleccionado.Cupo;
             }
 
+        if (sinCupoAccion || sinCupoTurno)
+        {
+            var motivo = sinCupoAccion && sinCupoTurno
+                ? "Cupo general y de turno completo"
+                : sinCupoTurno
+                    ? "Cupo de turno completo"
+                    : "Cupo general completo";
+
+            inscripcion.CambiarEstado(EstadoInscripcion.ListaEspera, motivo);
             await inscripcionRepository.AddAsync(inscripcion, cancellationToken);
+
+            var actorLista = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            await auditoriaService.RegistrarAsync(
+                nameof(Inscripcion),
+                inscripcion.Id,
+                "CreacionListaEspera",
+                actorLista,
+                new
+                {
+                    request.VoluntarioId,
+                    request.AccionId,
+                    TurnoId = request.TurnoId,
+                    Motivo = motivo
+                },
+                cancellationToken);
+
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
-            return Results.Created($"/api/v1/inscripciones/{inscripcion.Id}", inscripcion.ToResponse());
-        })
+            return Results.Conflict(inscripcion.ToResponse());
+        }
+
+        await inscripcionRepository.AddAsync(inscripcion, cancellationToken);
+
+        var actorCreacion = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        await auditoriaService.RegistrarAsync(
+            nameof(Inscripcion),
+            inscripcion.Id,
+            "Creacion",
+            actorCreacion,
+            new
+            {
+                request.VoluntarioId,
+                request.AccionId,
+                TurnoId = request.TurnoId
+            },
+            cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Results.Created($"/api/v1/inscripciones/{inscripcion.Id}", inscripcion.ToResponse());
+    })
         .RequireAuthorization();
 
         group.MapPatch("/{id:guid}/estado", async Task<IResult> (
@@ -76,6 +168,8 @@ public static class InscripcionesEndpoints
             UpdateEstadoInscripcionRequest request,
             IValidator<UpdateEstadoInscripcionRequest> validator,
             IInscripcionRepository repository,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -91,15 +185,17 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
+            if (inscripcion.Accion is null)
             {
-                var currentUserId = user.GetUserId();
-                var coordinadorId = inscripcion.Accion?.CoordinadorId;
-                if (currentUserId is null || coordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
+                return Results.Problem("La inscripción no tiene acción asociada.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            var estadoAnterior = inscripcion.Estado;
+
+            var authResult = await authorizationService.AuthorizeAsync(user, inscripcion.Accion, OwnsAccionRequirement);
+            if (!authResult.Succeeded)
+            {
+                return Results.Forbid();
             }
 
             try
@@ -116,12 +212,27 @@ public static class InscripcionesEndpoints
                 });
             }
 
-            await repository.UpdateAsync(inscripcion, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+        await repository.UpdateAsync(inscripcion, cancellationToken);
 
-            return Results.Ok(inscripcion.ToResponse());
+        var actorCambio = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        await auditoriaService.RegistrarAsync(
+            nameof(Inscripcion),
+            inscripcion.Id,
+            "CambioEstado",
+            actorCambio,
+            new
+            {
+                EstadoAnterior = estadoAnterior,
+                EstadoNuevo = inscripcion.Estado,
+                request.Comentarios
+            },
+            cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(inscripcion.ToResponse());
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapPost("/{id:guid}/checkin", async Task<IResult> (
             ClaimsPrincipal user,
@@ -130,6 +241,8 @@ public static class InscripcionesEndpoints
             IValidator<CheckInRequest> validator,
             IInscripcionRepository inscripcionRepository,
             VolunDbContext dbContext,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -150,24 +263,39 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
+            if (inscripcion.Accion is null)
             {
-                var currentUserId = user.GetUserId();
-                var coordinadorId = inscripcion.Accion?.CoordinadorId;
-                if (currentUserId is null || coordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
+                return Results.Problem("La inscripción no tiene acción asociada.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            var authResult = await authorizationService.AuthorizeAsync(user, inscripcion.Accion, OwnsAccionRequirement);
+            if (!authResult.Succeeded)
+            {
+                return Results.Forbid();
             }
 
             var asistencia = Asistencia.Create(id, DateTimeOffset.UtcNow, request.Metodo, request.Comentarios);
             dbContext.Asistencias.Add(asistencia);
+
+            var actorCheckIn = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            await auditoriaService.RegistrarAsync(
+                nameof(Asistencia),
+                asistencia.Id,
+                "CheckIn",
+                actorCheckIn,
+                new
+                {
+                    InscripcionId = asistencia.InscripcionId,
+                    request.Metodo,
+                    request.Comentarios
+                },
+                cancellationToken);
+
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(asistencia.ToResponse());
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapPost("/{id:guid}/checkout", async Task<IResult> (
             ClaimsPrincipal user,
@@ -176,6 +304,8 @@ public static class InscripcionesEndpoints
             IValidator<CheckOutRequest> validator,
             IInscripcionRepository inscripcionRepository,
             VolunDbContext dbContext,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -206,30 +336,47 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
+            if (inscripcion.Accion is null)
             {
-                var currentUserId = user.GetUserId();
-                var coordinadorId = inscripcion.Accion?.CoordinadorId;
-                if (currentUserId is null || coordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
+                return Results.Problem("La inscripción no tiene acción asociada.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            var authResult = await authorizationService.AuthorizeAsync(user, inscripcion.Accion, OwnsAccionRequirement);
+            if (!authResult.Succeeded)
+            {
+                return Results.Forbid();
             }
 
             asistencia.RegistrarCheckOut(request.CheckOut, request.Comentarios);
             dbContext.Asistencias.Update(asistencia);
+
+            var actorCheckOut = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            await auditoriaService.RegistrarAsync(
+                nameof(Asistencia),
+                asistencia.Id,
+                "CheckOut",
+                actorCheckOut,
+                new
+                {
+                    InscripcionId = asistencia.InscripcionId,
+                    request.CheckOut,
+                    request.Comentarios,
+                    HorasComputadas = asistencia.HorasComputadas
+                },
+                cancellationToken);
+
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(asistencia.ToResponse());
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapGet("/{id:guid}/qr", async Task<IResult> (
             ClaimsPrincipal user,
             Guid id,
             VolunDbContext dbContext,
             IQrCodeGenerator qrCodeGenerator,
+            IAuthorizationService authorizationService,
             CancellationToken cancellationToken) =>
         {
             var inscripcion = await dbContext.Inscripciones
@@ -241,22 +388,54 @@ public static class InscripcionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
+            if (inscripcion.Accion is null)
             {
-                var currentUserId = user.GetUserId();
-                if (!user.IsCoordinador() || currentUserId is null || inscripcion.Accion?.CoordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
+                return Results.Problem("La inscripción no tiene acción asociada.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            var authResult = await authorizationService.AuthorizeAsync(user, inscripcion.Accion, OwnsAccionRequirement);
+            if (!authResult.Succeeded)
+            {
+                return Results.Forbid();
             }
 
             var qrBytes = qrCodeGenerator.GenerateQr(inscripcion.QrToken);
             var fileName = $"inscripcion-{inscripcion.Id}.png";
             return Results.File(qrBytes, "image/png", fileName);
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
+
+        routes.MapGet("/api/v1/mis-inscripciones/{id:guid}/qr", async Task<IResult> (
+            ClaimsPrincipal user,
+            Guid id,
+            IInscripcionRepository inscripcionRepository,
+            IQrCodeGenerator qrCodeGenerator,
+            CancellationToken cancellationToken) =>
+        {
+            var voluntarioId = user.GetVoluntarioId();
+            if (!user.IsVoluntario() || voluntarioId is null)
+            {
+                return Results.Forbid();
+            }
+
+            var inscripcion = await inscripcionRepository.GetByIdAsync(id, cancellationToken);
+            if (inscripcion is null || inscripcion.VoluntarioId != voluntarioId)
+            {
+                return Results.NotFound();
+            }
+
+            var qrBytes = qrCodeGenerator.GenerateQr(inscripcion.QrToken);
+            var fileName = $"mi-inscripcion-{inscripcion.Id}.png";
+            return Results.File(qrBytes, "image/png", fileName);
+        })
+        .RequireAuthorization();
 
         return routes;
     }
 }
+
+
+
+
+
+

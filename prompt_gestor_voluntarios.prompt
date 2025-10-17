@@ -70,7 +70,7 @@ Return 409 when cupos exceeded; 422 for validation; 403 for permission issues.
    - `dotnet new classlib -n Volun.Notifications -o src/Volun.Notifications`
    - `dotnet new xunit -n Volun.Tests -o tests/Volun.Tests`
 3) Add references:
-   - `dotnet sln Volun.sln add src/**/**/*.csproj tests/**/**/*.csproj`
+   - `dotnet sln Volun.sln add src **/**/*.csproj tests/**/**/ *.csproj`
    - `dotnet add src/Volun.Infrastructure reference src/Volun.Core`
    - `dotnet add src/Volun.Web reference src/Volun.Core src/Volun.Infrastructure src/Volun.Notifications`
    - `dotnet add tests/Volun.Tests reference src/Volun.Web`

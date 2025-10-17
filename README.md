@@ -53,13 +53,14 @@ Solucion ASP.NET Core 8 en arquitectura en capas para gestionar voluntarios, acc
 - API REST `api/v1/...` con Minimal APIs, `ProblemDetails`, validaciones FluentValidation e identidad basada en roles.
 - Acciones y turnos: CRUD, publicacion, control de cupos, restriccion por coordinador propietario.
 - Voluntarios: alta publica, edicion, suspension (soft delete) y exportacion CSV filtrada por coordinador.
+- Baja RGPD: `DELETE /api/v1/voluntarios/{id}` anonimiza el perfil y deja trazabilidad en auditoria (solo voluntario propietario o Admin).
 - Inscripciones: creacion con lista de espera, cambio de estado, check-in/out con control de coordinador y endpoint de QR (`GET /api/v1/inscripciones/{id}/qr`).
 - Certificados:
   - Administracion privada (`POST /api/v1/certificados`) con control de roles.
   - Descarga de PDF generado con QuestPDF (`GET /api/v1/certificados/{id}/pdf`).
   - Verificacion publica por codigo (`GET /api/v1/public/certificados/{codigo}`).
 - Reportes: dashboard enriquecido (voluntarios activos, acciones por mes, top categorias, inscripciones por estado) respetando el alcance de cada coordinador.
-- Exportaciones CSV: voluntarios, inscripciones y asistencias, filtradas automaticamente por acciones propias del coordinador.
+- Exportaciones CSV (voluntarios/inscripciones/asistencias), filtradas automáticamente por coordinador y auditadas con los filtros usados.
 - Integracion con QRCoder y QuestPDF para generar QR (PNG) y certificados PDF listos para descarga.
 
 ## Servicios y configuraciones clave
@@ -76,4 +77,3 @@ Solucion ASP.NET Core 8 en arquitectura en capas para gestionar voluntarios, acc
 - Completar flujos de emision de certificados (notificaciones, versionado) y trazas de auditoria.
 - Incorporar exportaciones XLSX y plantillas dinamicas de correo.
 - Aumentar cobertura de pruebas (especialmente para certificados y reportes).
-

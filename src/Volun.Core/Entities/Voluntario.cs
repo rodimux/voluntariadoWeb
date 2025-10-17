@@ -167,6 +167,30 @@ public class Voluntario : BaseEntity
         Touch();
     }
 
+    public void Anonimizar()
+    {
+        var suffix = Id.ToString("N")[..8];
+        Nombre = "Anonimo";
+        Apellidos = $"Voluntario-{suffix}";
+        Email = $"anon-{suffix}@anon.volun";
+        Telefono = null;
+        DniNie = null;
+        Direccion = null;
+        Provincia = null;
+        Pais = null;
+        Disponibilidad = null;
+        FechaNacimiento = DateTimeOffset.UnixEpoch;
+        ConsentimientoRgpd = false;
+        ConsentimientoRgpdFecha = DateTimeOffset.UtcNow;
+        EstaActivo = false;
+
+        _habilidades.Clear();
+        _preferencias.Clear();
+
+        FechaActualizacion = DateTimeOffset.UtcNow;
+        Touch();
+    }
+
     public override string ToString() => JsonSerializer.Serialize(new
     {
         Id,

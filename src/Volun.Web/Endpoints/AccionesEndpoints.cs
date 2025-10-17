@@ -1,11 +1,13 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 using System.Security.Claims;
 using Volun.Core.Entities;
 using Volun.Core.Enums;
 using Volun.Core.Repositories;
+using Volun.Core.Services;
 using Volun.Core.ValueObjects;
 using Volun.Infrastructure.Persistence;
 using Volun.Web.Dtos;
@@ -16,7 +18,7 @@ namespace Volun.Web.Endpoints;
 
 public static class AccionesEndpoints
 {
-    private const string PolicyAdminOrCoordinador = "RequireAdminOrCoordinador";
+    private static readonly CoordinadorOwnsAccionRequirement OwnsAccionRequirement = new();
 
     public static IEndpointRouteBuilder MapAccionesEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -93,6 +95,8 @@ public static class AccionesEndpoints
             CreateAccionRequest request,
             IValidator<CreateAccionRequest> validator,
             IAccionRepository repository,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -141,11 +145,30 @@ public static class AccionesEndpoints
                 request.Requisitos);
 
             await repository.AddAsync(accion, cancellationToken);
+
+            var actor = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            await auditoriaService.RegistrarAsync(
+                nameof(Accion),
+                accion.Id,
+                "Creacion",
+                actor,
+                new
+                {
+                    request.Titulo,
+                    request.FechaInicio,
+                    request.FechaFin,
+                    request.Tipo,
+                    request.Categoria,
+                    request.Visibilidad,
+                    CoordinadorId = accion.CoordinadorId
+                },
+                cancellationToken);
+
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Created($"/api/v1/acciones/{accion.Id}", accion.ToResponse(accion.CupoDisponible(0)));
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapPut("/{id:guid}", async Task<IResult> (
             ClaimsPrincipal user,
@@ -153,6 +176,8 @@ public static class AccionesEndpoints
             UpdateAccionRequest request,
             IValidator<UpdateAccionRequest> validator,
             IAccionRepository repository,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -168,15 +193,11 @@ public static class AccionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
-            {
-                var currentUserId = user.GetUserId();
-                if (currentUserId is null || accion.CoordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
-            }
+        var authResult = await authorizationService.AuthorizeAsync(user, accion, OwnsAccionRequirement);
+        if (!authResult.Succeeded)
+        {
+            return Results.Forbid();
+        }
 
             var geo = request.Latitud.HasValue && request.Longitud.HasValue
                 ? GeoLocation.From(request.Latitud.Value, request.Longitud.Value)
@@ -194,17 +215,37 @@ public static class AccionesEndpoints
                 request.Requisitos,
                 geo);
 
-            await repository.UpdateAsync(accion, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+    await repository.UpdateAsync(accion, cancellationToken);
 
-            return Results.Ok(accion.ToResponse(accion.CupoDisponible(accion.Inscripciones.Count(i => i.Estado == EstadoInscripcion.Aprobada))));
+    var actor = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+    await auditoriaService.RegistrarAsync(
+        nameof(Accion),
+        accion.Id,
+        "Actualizacion",
+        actor,
+        new
+        {
+            request.Titulo,
+            request.FechaInicio,
+            request.FechaFin,
+            request.CupoMaximo,
+            request.Visibilidad,
+            request.Categoria
+        },
+        cancellationToken);
+
+    await unitOfWork.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(accion.ToResponse(accion.CupoDisponible(accion.Inscripciones.Count(i => i.Estado == EstadoInscripcion.Aprobada))));
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapPost("/{id:guid}/publicar", async Task<IResult> (
             ClaimsPrincipal user,
             Guid id,
             IAccionRepository repository,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -214,23 +255,29 @@ public static class AccionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
-            {
-                var currentUserId = user.GetUserId();
-                if (currentUserId is null || accion.CoordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
-            }
+        var authResult = await authorizationService.AuthorizeAsync(user, accion, OwnsAccionRequirement);
+        if (!authResult.Succeeded)
+        {
+            return Results.Forbid();
+        }
 
-            accion.Publicar();
-            await repository.UpdateAsync(accion, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+        accion.Publicar();
+        await repository.UpdateAsync(accion, cancellationToken);
 
-            return Results.NoContent();
+        var actor = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        await auditoriaService.RegistrarAsync(
+            nameof(Accion),
+            accion.Id,
+            "Publicacion",
+            actor,
+            new { accion.Estado, accion.FechaInicio, accion.FechaFin },
+            cancellationToken);
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         group.MapPost("/{id:guid}/turnos", async Task<IResult> (
             ClaimsPrincipal user,
@@ -238,6 +285,8 @@ public static class AccionesEndpoints
             CreateTurnoRequest request,
             IValidator<CreateTurnoRequest> validator,
             IAccionRepository repository,
+            IAuthorizationService authorizationService,
+            [FromServices] IAuditoriaService auditoriaService,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -253,26 +302,44 @@ public static class AccionesEndpoints
                 return Results.NotFound();
             }
 
-            var isAdmin = user.IsAdmin();
-            if (!isAdmin)
+        var authResult = await authorizationService.AuthorizeAsync(user, accion, OwnsAccionRequirement);
+        if (!authResult.Succeeded)
+        {
+            return Results.Forbid();
+        }
+
+        var turno = accion.AgregarTurno(request.Titulo, request.FechaInicio, request.FechaFin, request.Cupo, request.Notas);
+        await repository.UpdateAsync(accion, cancellationToken);
+
+        var actor = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        await auditoriaService.RegistrarAsync(
+            nameof(Accion),
+            accion.Id,
+            "NuevoTurno",
+            actor,
+            new
             {
-                var currentUserId = user.GetUserId();
-                if (currentUserId is null || accion.CoordinadorId != currentUserId)
-                {
-                    return Results.Forbid();
-                }
-            }
+                TurnoId = turno.Id,
+                request.Titulo,
+                request.FechaInicio,
+                request.FechaFin,
+                request.Cupo
+            },
+            cancellationToken);
 
-            var turno = accion.AgregarTurno(request.Titulo, request.FechaInicio, request.FechaFin, request.Cupo, request.Notas);
-            await repository.UpdateAsync(accion, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-            return Results.Created($"/api/v1/acciones/{id}/turnos/{turno.Id}", turno);
+        return Results.Created($"/api/v1/acciones/{id}/turnos/{turno.Id}", turno);
         })
-        .RequireAuthorization(PolicyAdminOrCoordinador);
+        .RequireAuthorization(AuthorizationPolicies.AdminOrCoordinador);
 
         return routes;
     }
 
     public sealed record AccionQuery(int Page = 0, int Size = 20, string? Term = null, EstadoAccion? Estado = null);
 }
+
+
+
+
+
